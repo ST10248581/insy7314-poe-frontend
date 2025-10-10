@@ -50,6 +50,14 @@ function Register() {
       // Use env var or fallback
       const base = import.meta.env.VITE_API_URL || 'http://localhost:5000';
       const res = await axios.post(`${base}/api/auth/register`, data, { timeout: 8000 });
+
+      if (res.status === 429) {
+        const body = await res.json().catch(() => ({}));
+        const retryAfter = body.retryAfterSeconds || +res.headers.get('Retry-After') || 60;
+        throw { type: 'rate_limit', retryAfter, message: body.error || 'Too many attempts' };
+      }
+
+
       alert(res.data.message || 'Registered successfully');
       reset();
       navigate('/login');
