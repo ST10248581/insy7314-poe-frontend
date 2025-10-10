@@ -1,0 +1,73 @@
+/* src/index.css - replace the whole file with this */
+:root {
+  --brand-blue: #005bb5;
+  --brand-dark: #004080;
+  --page-bg: #f0f4f8;
+  --text-muted: #6c757d;
+  --card-padding: 1.5rem;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+/* Page background and basic text color */
+body {
+  margin: 0;
+  background-color: var(--page-bg);
+  color: #213547;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ensure Bootstrap containers behave normally */
+.container, .container-fluid {
+  width: 100%;
+}
+
+/* small main spacing */
+main {
+  padding-top: 0.5rem;
+  padding-bottom: 2rem;
+}
+
+/* Card tweaks */
+.card {
+  border-radius: 0.5rem;
+  padding: 0;
+}
+
+.card .card-body {
+  padding: var(--card-padding);
+}
+
+/* Form label color */
+.form-label.fw-semibold {
+  color: var(--brand-dark);
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: var(--brand-blue);
+  border-color: var(--brand-blue);
+}
+.btn-primary:hover, .btn-primary:focus {
+  background-color: #004a99;
+  border-color: #004a99;
+}
+
+/* Footer links small */
+.card-footer a {
+  color: var(--brand-blue);
+}
+
+/* Utility: make sure anchor links are visible */
+a {
+  color: var(--brand-blue);
+  text-decoration: none;
+}
+
+/* Responsive: increase container max width at large screens (let Bootstrap grid control layout) */
+@media (min-width: 1200px) {
+  .container {
+    max-width: 1140px;
+  }
+}
