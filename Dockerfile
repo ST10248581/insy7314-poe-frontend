@@ -3,12 +3,21 @@
 # -------------------------
 FROM node:18-slim AS build
 
+# Use a non-root user to avoid permission issues
 WORKDIR /app
+RUN chown -R node:node /app
+USER node
 
-COPY package.json package-lock.json ./
+# Copy package files first (better for caching)
+COPY --chown=node:node package.json package-lock.json ./
+
+# Install dependencies
 RUN npm ci
 
-COPY . .
+# Copy the rest of the project
+COPY --chown=node:node . .
+
+# Build the app using npm script
 RUN npm run build
 
 # -------------------------
@@ -16,6 +25,7 @@ RUN npm run build
 # -------------------------
 FROM nginx:stable
 
+# Copy the built app from Stage 1
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Optional: SPA routing
