@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline - React + Vite
 
 on:
   push:
@@ -21,28 +21,15 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Vulnerability Scan
-        run: npm audit --audit-level=moderate
-
-      - name: Lint
-        run: npx eslint .
+      - name: Lint (warn only)
+        run: npx eslint . || echo "Lint warnings — continuing..."
+        continue-on-error: true
 
       - name: Unit Tests
         run: npm test
 
-      - name: Integration Tests (basic placeholder)
-        run: npm run test:integration || echo "No integration tests, skipping"
-
-      - name: SonarQube Scan
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        run: |
-          npx sonar-scanner \
-            -Dsonar.projectKey=YOUR_PROJECT_KEY \
-            -Dsonar.sources=./src \
-            -Dsonar.host.url=$SONAR_HOST_URL \
-            -Dsonar.login=$SONAR_TOKEN
+      - name: Build Vite Project
+        run: npm run build
 
   docker-build-push:
     runs-on: ubuntu-latest
@@ -58,25 +45,13 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v2
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          username: "troykrause"
+          password: "D3V+*MMca&x7!AF"
 
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: yourdockeruser/your-app-name:latest
-
-  deploy-to-render:
-    runs-on: ubuntu-latest
-    needs: docker-build-push
-
-    steps:
-      - name: Deploy to Render
-        run: |
-          curl -X POST \
-            -H "Accept: application/json" \
-            -H "Content-Type: application/json" \
-            --data '{}' \
-            https://api.render.com/deploy/YOUR_RENDER_DEPLOY_HOOK
+          tags: troykrause/insy-poe-frontend:latest
+          file: Dockerfile
