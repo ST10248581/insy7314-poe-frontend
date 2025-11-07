@@ -1,5 +1,7 @@
-# Stage 1: Build the React + Vite app
-FROM node:18-alpine AS build
+# -------------------------
+# Stage 1: Build React + Vite
+# -------------------------
+FROM node:18-slim AS build
 
 # Set working directory
 WORKDIR /app
@@ -8,19 +10,21 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copy all source files
+# Copy the rest of the source code
 COPY . .
 
-# Build the app
+# Build the production app
 RUN npm run build
 
+# -------------------------
 # Stage 2: Serve with Nginx
-FROM nginx:stable-alpine
+# -------------------------
+FROM nginx:stable-slim
 
 # Copy built files from Stage 1
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Copy custom nginx config (optional)
+# Optional: custom nginx config for React Router (SPA)
 # COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port 80
