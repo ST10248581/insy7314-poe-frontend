@@ -1,0 +1,198 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5.1.0
+  docker: circleci/docker@2.2.0
+
+executors:
+  node-executor:
+    docker:
+      - image: cimg/node:18.19.0
+    working_directory: ~/repo
+
+jobs:
+  vulnerability-scan:
+    executor: node-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package-lock.json" }}
+            - v1-dependencies-
+      - run:
+          name: Install Dependencies
+          command: npm ci
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-dependencies-{{ checksum "package-lock.json" }}
+      - run:
+          name: Run npm audit
+          command: |
+            npm audit --audit-level=moderate || true        
+      
+  lint:
+    executor: node-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package-lock.json" }}
+            - v1-dependencies-
+      - run:
+          name: Install Dependencies
+          command: npm ci
+      - run:
+          name: Run ESLint
+          command: npm run lint
+
+  unit-tests:
+    executor: node-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package-lock.json" }}
+            - v1-dependencies-
+      - run:
+          name: Install Dependencies
+          command: npm ci
+      - run:
+          name: Run Unit Tests
+          command: npm run test:unit
+      - store_test_results:
+          path: test-results
+
+  integration-tests:
+    docker:
+      - image: cimg/node:18.19.0 
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package-lock.json" }}
+            - v1-dependencies-
+      - run:
+          name: Install Dependencies
+          command: npm ci
+      - run:
+          name: Run Integration Tests
+          command: npm run test:integration
+            NODE_ENV: test
+      - store_test_results:
+          path: test-results
+
+  build-docker:
+    executor: docker/docker
+    steps:
+      - checkout
+      - setup_remote_docker:
+          version: 20.10.24
+          docker_layer_caching: true
+      - run:
+          name: Build Docker Image
+          command: |
+            docker build -t $DOCKER_IMAGE_NAME:$CIRCLE_SHA1 .
+            docker tag $DOCKER_IMAGE_NAME:$CIRCLE_SHA1 $DOCKER_IMAGE_NAME:latest
+          environment:
+            DOCKER_IMAGE_NAME: your-dockerhub-username/your-app-name 
+      - run:
+          name: Push to Docker Hub
+          command: |
+            echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+            docker push $DOCKER_IMAGE_NAME:$CIRCLE_SHA1
+            docker push $DOCKER_IMAGE_NAME:latest
+
+  deploy-render:
+    executor: node-executor
+    steps:
+      - checkout
+      - run:
+          name: Trigger Render Deploy
+          command: |          
+            curl -X POST $RENDER_DEPLOY_HOOK_URL
+
+  deploy-vercel:
+    executor: node-executor
+    steps:
+      - checkout
+      - run:
+          name: Install Vercel CLI
+          command: npm install -g vercel
+      - run:
+          name: Deploy to Vercel
+          command: |
+            vercel --token=$VERCEL_TOKEN --prod --yes
+
+workflows:
+  version: 2
+  build-test-deploy:
+    jobs:
+      - vulnerability-scan
+      - lint
+      - unit-tests
+      - integration-tests:
+          requires:
+            - unit-tests 
+      - build-docker:
+          requires:
+            - vulnerability-scan
+            - lint
+            - integration-tests
+          filters:
+            branches:
+              only: 
+                - main
+      - deploy-render:
+          requires:
+            - build-docker
+          filters:
+            branches:
+              only: main
+
+# ============================================
+# SETUP CHECKLIST - Environment Variables
+# ============================================
+# Add these in CircleCI: Project Settings > Environment Variables
+#
+# For Docker Hub:
+#   - DOCKER_USERNAME: Your Docker Hub username
+#   - DOCKER_PASSWORD: Your Docker Hub password or access token
+# For Render:
+#   - RENDER_DEPLOY_HOOK_URL: Your Render deploy hook URL
+#
+# ============================================
+# PACKAGE.JSON SCRIPTS NEEDED
+# ============================================
+# Add these to your package.json "scripts" section:
+# {
+#   "scripts": {
+#     "lint": "eslint .",
+#     "test:unit": "jest --testPathPattern=unit",
+#     "test:integration": "jest --testPathPattern=integration",
+#     "test:coverage": "jest --coverage"
+#   }
+# }
+#
+# ============================================
+# PROJECT STRUCTURE RECOMMENDATIONS
+# ============================================
+# tests/
+#   ├── unit/           # Unit test files
+#   │   └── *.test.js
+#   └── integration/    # Integration test files
+#       └── *.test.js
+#
+# ============================================
+# DOCKERFILE EXAMPLE (Create in project root)
+# ============================================
+
+# FROM node:18-alpine
+# WORKDIR /app
+# COPY package*.json ./
+# RUN npm ci --only=production
+# COPY . .
+# EXPOSE 3000
+# CMD ["node", "server.js"]
+#
