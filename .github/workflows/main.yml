@@ -1,108 +1,82 @@
-version: 2.1
+name: CI/CD Pipeline
 
-orbs:
-  node: circleci/node@5.1.0
-  docker: circleci/docker@2.2.1
+on:
+  push:
+    branches: ["main"]
+  pull_request:
 
 jobs:
-  install-deps:
-    docker:
-      - image: cimg/node:18
-    steps:
-      - checkout
-      - run: npm install
+  build-test-analyze:
+    runs-on: ubuntu-latest
 
-  vulnerability-scan:
-    docker:
-      - image: cimg/node:18
     steps:
-      - checkout
-      - run: npm install --ignore-scripts
-      - run: npm audit --audit-level=moderate
+      - name: Checkout
+        uses: actions/checkout@v3
 
-  sonar-scan:
-    docker:
-      - image: cimg/base:stable
-    steps:
-      - checkout
-      - run:
-          name: SonarQube Scan
-          command: |
-            sonar-scanner \
-              -Dsonar.projectKey=YOUR_PROJECT_KEY \
-              -Dsonar.sources=./src \
-              -Dsonar.host.url=$SONAR_HOST_URL \
-              -Dsonar.login=$SONAR_TOKEN
+      - name: Use Node.js 18
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
 
-  unit-tests:
-    docker:
-      - image: cimg/node:18
-    steps:
-      - checkout
-      - run: npm install
-      - run: npm test
+      - name: Install Dependencies
+        run: npm install
 
-  lint:
-    docker:
-      - image: cimg/node:18
-    steps:
-      - checkout
-      - run: npm install
-      - run: npx eslint .
+      - name: Vulnerability Scan
+        run: npm audit --audit-level=moderate
 
-  integration-tests:
-    docker:
-      - image: cimg/node:18
-    steps:
-      - checkout
-      - run: npm install
-      - run: npm run test:integration || echo "Integration tests placeholder"
+      - name: Lint
+        run: npx eslint .
+
+      - name: Unit Tests
+        run: npm test
+
+      - name: Integration Tests (basic placeholder)
+        run: npm run test:integration || echo "No integration tests, skipping"
+
+      - name: SonarQube Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          npx sonar-scanner \
+            -Dsonar.projectKey=YOUR_PROJECT_KEY \
+            -Dsonar.sources=./src \
+            -Dsonar.host.url=$SONAR_HOST_URL \
+            -Dsonar.login=$SONAR_TOKEN
 
   docker-build-push:
-    docker:
-      - image: cimg/base:stable
+    runs-on: ubuntu-latest
+    needs: build-test-analyze
+
     steps:
-      - checkout
-      - setup_remote_docker
-      - run: docker build -t your-docker-user/your-app-name .
-      - run: echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
-      - run: docker push your-docker-user/your-app-name
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: yourdockeruser/your-app-name:latest
 
   deploy-to-render:
-    docker:
-      - image: curlimages/curl:latest
-    steps:
-      - run:
-          name: Deploy to Render
-          command: |
-            curl -X POST \
-              -H "Authorization: Bearer YOUR_RENDER_API_KEY" \
-              -H "Content-Type: application/json" \
-              --data '{"clearCache": false}' \
-              https://api.render.com/v1/services/YOUR_RENDER_SERVICE_ID/deploys
+    runs-on: ubuntu-latest
+    needs: docker-build-push
 
-workflows:
-  build-test-deploy:
-    jobs:
-      - install-deps
-      - vulnerability-scan:
-          requires:
-            - install-deps
-      - sonar-scan:
-          requires:
-            - install-deps
-      - lint:
-          requires:
-            - install-deps
-      - unit-tests:
-          requires:
-            - install-deps
-      - integration-tests:
-          requires:
-            - unit-tests
-      - docker-build-push:
-          requires:
-            - integration-tests
-      - deploy-to-render:
-          requires:
-            - docker-build-push
+    steps:
+      - name: Deploy to Render
+        run: |
+          curl -X POST \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            --data '{}' \
+            https://api.render.com/deploy/YOUR_RENDER_DEPLOY_HOOK
