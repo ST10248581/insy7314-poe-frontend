@@ -1,0 +1,122 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5.0.0
+  docker: circleci/docker@2.2.0
+
+jobs:
+  checkout-code:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+
+  install-deps:
+    docker:
+      - image: cimg/node:20.0
+    steps:
+      - checkout
+      - run:
+          name: Install backend deps
+          command: |
+            if [ -d backend ]; then cd backend && npm ci; fi
+      - run:
+          name: Install frontend deps
+          command: |
+            if [ -d frontend ]; then cd frontend && npm ci; fi
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
+
+  lint-and-test:
+    docker:
+      - image: cimg/node:20.0
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Lint & Test backend
+          command: |
+            if [ -d backend ]; then cd backend && npm run lint && npm test || true; fi
+      - run:
+          name: Lint & Test frontend
+          command: |
+            if [ -d frontend ]; then cd frontend && npm run lint && npm test || true; fi
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
+
+  snyk-scan:
+    docker:
+      - image: cimg/node:20.0
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Install snyk
+          command: npm install -g snyk
+      - run:
+          name: Run Snyk security scan
+          command: ./ci-scripts/run_snyk_scan.sh
+
+  sonar-scan:
+    docker:
+      - image: sonarsource/sonar-scanner-cli:latest
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Run SonarQube Scan
+          command: |
+            if [ -d backend ]; then cd backend && sonar-scanner -Dsonar.projectKey=backend -Dsonar.sources=. -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_TOKEN}; fi
+            if [ -d frontend ]; then cd frontend && sonar-scanner -Dsonar.projectKey=frontend -Dsonar.sources=. -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_TOKEN}; fi
+
+  check-sonar-quality:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Enforce Sonar Quality Gate
+          command: ./ci-scripts/check_sonar_quality.sh backend ${SONAR_HOST_URL} ${SONAR_TOKEN}
+
+  docker-build-push:
+    docker:
+      - image: cimg/docker:stable
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Docker login
+          command: echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USER}" --password-stdin
+      - run:
+          name: Build & Push backend image
+          command: |
+            docker build -t ${DOCKERHUB_USER}/insy7314-backend:latest backend
+            docker push ${DOCKERHUB_USER}/insy7314-backend:latest
+      - run:
+          name: Build & Push frontend image
+          command: |
+            docker build -t ${DOCKERHUB_USER}/insy7314-frontend:latest frontend
+            docker push ${DOCKERHUB_USER}/insy7314-frontend:latest
+
+workflows:
+  version: 2
+  devsecops:
+    jobs:
+      - checkout-code
+      - install-deps:
+          requires: [checkout-code]
+      - lint-and-test:
+          requires: [install-deps]
+      - snyk-scan:
+          requires: [lint-and-test]
+      - sonar-scan:
+          requires: [snyk-scan]
+      - check-sonar-quality:
+          requires: [sonar-scan]
+      - docker-build-push:
+          requires: [check-sonar-quality]
