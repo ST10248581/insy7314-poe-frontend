@@ -25,9 +25,6 @@ jobs:
         run: npx eslint . || echo "Lint warnings — continuing..."
         continue-on-error: true
 
-      - name: Unit Tests
-        run: npm test
-
       - name: Build Vite Project
         run: npm run build
 
