@@ -11,13 +11,19 @@ USER node
 # Copy package files first (better for caching)
 COPY --chown=node:node package.json package-lock.json ./
 
+# Copy the rest of the project
+COPY --chown=node:node . .
+
 # Install dependencies
 RUN npm ci
+
+# Add local binaries to PATH
+ENV PATH=/app/node_modules/.bin:$PATH
 
 # Copy the rest of the project
 COPY --chown=node:node . .
 
-# Build the app using npm script
+# Build the app
 RUN npm run build
 
 # -------------------------
